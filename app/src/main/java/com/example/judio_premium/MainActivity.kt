@@ -5,10 +5,15 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -16,7 +21,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.judio_premium.data.Gasto
 import com.example.judio_premium.data.GastoDatabase
 import com.example.judio_premium.ui.theme.Judio_premiumTheme
@@ -47,6 +56,7 @@ fun AppNavigation() {
         composable("main") { MainScreen(navController) }
         composable("ingresar") { IngresarGastoScreen(navController) }
         composable("grafico") { GraficoScreen(navController) }
+        composable("historial") { HistorialScreen(navController) }
     }
 }
 
@@ -57,12 +67,40 @@ fun MainScreen(navController: NavHostController) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        Image(
+            painter = painterResource(id = R.drawable.logo_app),
+            contentDescription = "Logo App",
+            modifier = Modifier.size(150.dp)
+        )
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Text(
+            text = "JUDIO PREMIUM",
+            style = MaterialTheme.typography.headlineLarge.copy(
+                fontWeight = FontWeight.Bold,
+                fontSize = 40.sp,
+                letterSpacing = 2.sp
+            ),
+            color = MaterialTheme.colorScheme.primary
+        )
+        
+        Spacer(modifier = Modifier.height(48.dp))
+
         Button(onClick = { navController.navigate("ingresar") }, modifier = Modifier.fillMaxWidth()) {
             Text("Ingresar gasto")
         }
         Spacer(modifier = Modifier.height(20.dp))
         Button(onClick = { navController.navigate("grafico") }, modifier = Modifier.fillMaxWidth()) {
             Text("Ver gráfico")
+        }
+        Spacer(modifier = Modifier.height(20.dp))
+        Button(
+            onClick = { navController.navigate("historial") }, 
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+        ) {
+            Text("Historial / Eliminar")
         }
     }
 }
@@ -79,18 +117,28 @@ fun IngresarGastoScreen(navController: NavHostController) {
     val fechaHoy = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
 
     val categorias = listOf("Comida", "Ocio", "Transporte", "Ropa", "Otros")
-    var categoriaSeleccionada by remember { mutableStateOf(categorias[0]) }
+    var categoriaSeleccionada by remember { mutableStateOf("-") }
     var expandedCat by remember { mutableStateOf(false) }
 
     val personas = listOf("Yo", "Lucila", "Emma", "Anastassia", "Sofia", "Rocio", "Mama", "Papa")
-    var personaSeleccionada by remember { mutableStateOf(personas[0]) }
+    var personaSeleccionada by remember { mutableStateOf("-") }
     var expandedPer by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxSize().padding(32.dp)) {
         Text("Fecha: $fechaHoy", style = MaterialTheme.typography.titleMedium)
         Spacer(modifier = Modifier.height(16.dp))
 
-        OutlinedTextField(value = monto, onValueChange = { monto = it }, label = { Text("Monto") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(
+            value = monto, 
+            onValueChange = { input ->
+                if (input.all { it.isDigit() || it == '.' }) {
+                    monto = input
+                }
+            }, 
+            label = { Text("Monto") }, 
+            modifier = Modifier.fillMaxWidth(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+        )
         
         Spacer(modifier = Modifier.height(8.dp))
         
@@ -123,16 +171,72 @@ fun IngresarGastoScreen(navController: NavHostController) {
         Button(
             onClick = {
                 val m = monto.toDoubleOrNull() ?: 0.0
-                if (m > 0) {
+                val catValida = categoriaSeleccionada != "-"
+                val perValida = personaSeleccionada != "-"
+                
+                if (m > 0 && catValida && perValida) {
                     scope.launch {
                         db.gastoDao().insertar(Gasto(monto = m, categoria = categoriaSeleccionada, descripcion = descripcion, persona = personaSeleccionada, fecha = fechaHoy))
                         navController.popBackStack()
                     }
                 }
             },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            enabled = monto.isNotEmpty() && categoriaSeleccionada != "-" && personaSeleccionada != "-"
         ) {
             Text("Guardar gasto")
+        }
+    }
+}
+
+@Composable
+fun HistorialScreen(navController: NavHostController) {
+    val context = LocalContext.current
+    val db = remember { GastoDatabase.getDatabase(context) }
+    val gastos by db.gastoDao().obtenerTodos().collectAsState(initial = emptyList())
+    val scope = rememberCoroutineScope()
+
+    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        Text("Historial de Gastos", style = MaterialTheme.typography.headlineMedium)
+        Text("Toca el icono para eliminar", style = MaterialTheme.typography.bodySmall)
+        
+        Spacer(modifier = Modifier.height(16.dp))
+
+        LazyColumn(modifier = Modifier.weight(1f)) {
+            items(gastos) { gasto ->
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("$${gasto.monto}", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                            Text("${gasto.categoria} - ${gasto.persona}", style = MaterialTheme.typography.bodyMedium)
+                            if (gasto.descripcion.isNotEmpty()) {
+                                Text(gasto.descripcion, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                            }
+                            Text(gasto.fecha, style = MaterialTheme.typography.labelSmall)
+                        }
+                        IconButton(onClick = {
+                            scope.launch {
+                                db.gastoDao().eliminar(gasto)
+                            }
+                        }) {
+                            Icon(Icons.Default.Delete, contentDescription = "Eliminar", tint = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Button(onClick = { navController.popBackStack() }, modifier = Modifier.fillMaxWidth()) {
+            Text("Volver")
         }
     }
 }
@@ -221,7 +325,9 @@ fun GraficoScreen(navController: NavHostController) {
 
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Persona")
+            Spacer(modifier = Modifier.width(12.dp))
             Switch(checked = agruparPorCategoria, onCheckedChange = { agruparPorCategoria = it })
+            Spacer(modifier = Modifier.width(12.dp))
             Text("Categoría")
         }
 
