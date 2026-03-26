@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -11,23 +12,31 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.judio_premium.data.Gasto
-import com.example.judio_premium.data.GastoDatabase
+import com.example.judio_premium.data.*
 import com.example.judio_premium.ui.theme.Judio_premiumTheme
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -57,51 +66,122 @@ fun AppNavigation() {
         composable("ingresar") { IngresarGastoScreen(navController) }
         composable("grafico") { GraficoScreen(navController) }
         composable("historial") { HistorialScreen(navController) }
+        composable("configuracion") { ConfiguracionScreen(navController) }
     }
 }
 
 @Composable
 fun MainScreen(navController: NavHostController) {
+    val context = LocalContext.current
+    val db = remember { GastoDatabase.getDatabase(context) }
+    
+    val categorias by db.gastoDao().obtenerCategorias().collectAsState(initial = emptyList())
+    val personas by db.gastoDao().obtenerPersonas().collectAsState(initial = emptyList())
+    
+    val botonesHabilitados = categorias.isNotEmpty() && personas.isNotEmpty()
+
     Column(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
+        modifier = Modifier.fillMaxSize().padding(16.dp).systemBarsPadding(),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        Spacer(modifier = Modifier.weight(1f))
+        
         Image(
             painter = painterResource(id = R.drawable.logo_app),
-            contentDescription = "Logo App",
-            modifier = Modifier.size(150.dp)
+            contentDescription = "Logo Fluxa",
+            modifier = Modifier.size(140.dp)
         )
 
         Spacer(modifier = Modifier.height(24.dp))
 
         Text(
-            text = "JUDIO PREMIUM",
+            text = "Fluxa",
             style = MaterialTheme.typography.headlineLarge.copy(
-                fontWeight = FontWeight.Bold,
-                fontSize = 40.sp,
-                letterSpacing = 2.sp
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 42.sp,
+                letterSpacing = 1.sp
             ),
             color = MaterialTheme.colorScheme.primary
         )
         
         Spacer(modifier = Modifier.height(48.dp))
 
-        Button(onClick = { navController.navigate("ingresar") }, modifier = Modifier.fillMaxWidth()) {
-            Text("Ingresar gasto")
-        }
-        Spacer(modifier = Modifier.height(20.dp))
-        Button(onClick = { navController.navigate("grafico") }, modifier = Modifier.fillMaxWidth()) {
-            Text("Ver gráfico")
-        }
-        Spacer(modifier = Modifier.height(20.dp))
+        MainButton(
+            text = "Ingresar Gasto",
+            icon = Icons.Default.Add,
+            enabled = botonesHabilitados,
+            onClick = { navController.navigate("ingresar") }
+        )
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        MainButton(
+            text = "Reportes",
+            icon = Icons.Default.Assessment,
+            enabled = botonesHabilitados,
+            onClick = { navController.navigate("grafico") }
+        )
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        MainButton(
+            text = "Historial",
+            icon = Icons.AutoMirrored.Filled.List,
+            enabled = botonesHabilitados,
+            onClick = { navController.navigate("historial") }
+        )
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
         Button(
-            onClick = { navController.navigate("historial") }, 
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+            onClick = { navController.navigate("configuracion") }, 
+            modifier = Modifier.fillMaxWidth().height(56.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+            ),
+            shape = RoundedCornerShape(16.dp)
         ) {
-            Text("Historial / Eliminar")
+            Icon(Icons.Default.Settings, contentDescription = null)
+            Spacer(Modifier.width(12.dp))
+            Text("Personalizar", fontWeight = FontWeight.Medium)
         }
+        
+        if (!botonesHabilitados) {
+            Spacer(modifier = Modifier.height(20.dp))
+            Text(
+                "¡Bienvenido! Configura tus categorías y personas para empezar.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 32.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.weight(1f))
+        
+        Text(
+            text = "by Facundo Bustamante",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f),
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+    }
+}
+
+@Composable
+fun MainButton(text: String, icon: ImageVector, enabled: Boolean, onClick: () -> Unit) {
+    Button(
+        onClick = onClick, 
+        modifier = Modifier.fillMaxWidth().height(60.dp),
+        enabled = enabled,
+        shape = RoundedCornerShape(18.dp),
+        elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
+    ) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(24.dp))
+        Spacer(Modifier.width(12.dp))
+        Text(text, fontSize = 18.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -112,131 +192,359 @@ fun IngresarGastoScreen(navController: NavHostController) {
     val db = remember { GastoDatabase.getDatabase(context) }
     val scope = rememberCoroutineScope()
 
+    val categorias by db.gastoDao().obtenerCategorias().collectAsState(initial = emptyList())
+    val personas by db.gastoDao().obtenerPersonas().collectAsState(initial = emptyList())
+
     var monto by remember { mutableStateOf("") }
     var descripcion by remember { mutableStateOf("") }
-    val fechaHoy = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+    val fechaHoy = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date())
+    val fechaDb = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
 
-    val categorias = listOf("Comida", "Ocio", "Transporte", "Ropa", "Otros")
     var categoriaSeleccionada by remember { mutableStateOf("-") }
     var expandedCat by remember { mutableStateOf(false) }
 
-    val personas = listOf("Yo", "Lucila", "Emma", "Anastassia", "Sofia", "Rocio", "Mama", "Papa")
     var personaSeleccionada by remember { mutableStateOf("-") }
     var expandedPer by remember { mutableStateOf(false) }
 
-    Column(modifier = Modifier.fillMaxSize().padding(32.dp)) {
-        Text("Fecha: $fechaHoy", style = MaterialTheme.typography.titleMedium)
-        Spacer(modifier = Modifier.height(16.dp))
-
-        OutlinedTextField(
-            value = monto, 
-            onValueChange = { input ->
-                if (input.all { it.isDigit() || it == '.' }) {
-                    monto = input
-                }
-            }, 
-            label = { Text("Monto") }, 
-            modifier = Modifier.fillMaxWidth(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-        )
-        
-        Spacer(modifier = Modifier.height(8.dp))
-        
-        ExposedDropdownMenuBox(expanded = expandedCat, onExpandedChange = { expandedCat = !expandedCat }) {
-            OutlinedTextField(value = categoriaSeleccionada, onValueChange = {}, readOnly = true, label = { Text("Categoría") }, modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth())
-            ExposedDropdownMenu(expanded = expandedCat, onDismissRequest = { expandedCat = false }) {
-                categorias.forEach { cat ->
-                    DropdownMenuItem(text = { Text(cat) }, onClick = { categoriaSeleccionada = cat; expandedCat = false })
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        OutlinedTextField(value = descripcion, onValueChange = { descripcion = it }, label = { Text("Descripción") }, modifier = Modifier.fillMaxWidth())
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        ExposedDropdownMenuBox(expanded = expandedPer, onExpandedChange = { expandedPer = !expandedPer }) {
-            OutlinedTextField(value = personaSeleccionada, onValueChange = {}, readOnly = true, label = { Text("Persona") }, modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth())
-            ExposedDropdownMenu(expanded = expandedPer, onDismissRequest = { expandedPer = false }) {
-                personas.forEach { per ->
-                    DropdownMenuItem(text = { Text(per) }, onClick = { personaSeleccionada = per; expandedPer = false })
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        Button(
-            onClick = {
-                val m = monto.toDoubleOrNull() ?: 0.0
-                val catValida = categoriaSeleccionada != "-"
-                val perValida = personaSeleccionada != "-"
-                
-                if (m > 0 && catValida && perValida) {
-                    scope.launch {
-                        db.gastoDao().insertar(Gasto(monto = m, categoria = categoriaSeleccionada, descripcion = descripcion, persona = personaSeleccionada, fecha = fechaHoy))
-                        navController.popBackStack()
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Nuevo Gasto", fontWeight = FontWeight.Bold) },
+                navigationIcon = {
+                    IconButton(onClick = { navController.popBackStack() }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
                     }
                 }
-            },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = monto.isNotEmpty() && categoriaSeleccionada != "-" && personaSeleccionada != "-"
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(24.dp)
+                .verticalScroll(rememberScrollState())
         ) {
-            Text("Guardar gasto")
+            InfoCard(label = "Fecha de hoy", value = fechaHoy)
+            
+            Spacer(modifier = Modifier.height(24.dp))
+
+            OutlinedTextField(
+                value = monto, 
+                onValueChange = { input -> if (input.all { it.isDigit() || it == '.' }) monto = input }, 
+                label = { Text("Monto ($)") }, 
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                shape = RoundedCornerShape(16.dp),
+                prefix = { Text("$ ") },
+                textStyle = LocalTextStyle.current.copy(fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            )
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            SelectorField(
+                label = "Categoría",
+                selected = categoriaSeleccionada,
+                expanded = expandedCat,
+                onExpandedChange = { expandedCat = it },
+                items = categorias.map { it.nombre },
+                onSelect = { categoriaSeleccionada = it; expandedCat = false }
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            OutlinedTextField(
+                value = descripcion, 
+                onValueChange = { descripcion = it }, 
+                label = { Text("¿En qué gastaste? (opcional)") }, 
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp)
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            SelectorField(
+                label = "Persona",
+                selected = personaSeleccionada,
+                expanded = expandedPer,
+                onExpandedChange = { expandedPer = it },
+                items = personas.map { it.nombre },
+                onSelect = { personaSeleccionada = it; expandedPer = false }
+            )
+
+            Spacer(modifier = Modifier.height(40.dp))
+
+            Button(
+                onClick = {
+                    val m = monto.toDoubleOrNull() ?: 0.0
+                    if (m > 0 && categoriaSeleccionada != "-" && personaSeleccionada != "-") {
+                        scope.launch {
+                            db.gastoDao().insertar(Gasto(monto = m, categoria = categoriaSeleccionada, descripcion = descripcion, persona = personaSeleccionada, fecha = fechaDb))
+                            navController.popBackStack()
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+                enabled = monto.isNotEmpty() && categoriaSeleccionada != "-" && personaSeleccionada != "-",
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Text("Guardar Gasto", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            }
         }
     }
 }
 
+@Composable
+fun InfoCard(label: String, value: String) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Event, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SelectorField(label: String, selected: String, expanded: Boolean, onExpandedChange: (Boolean) -> Unit, items: List<String>, onSelect: (String) -> Unit) {
+    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = onExpandedChange) {
+        OutlinedTextField(
+            value = if(selected == "-") "Seleccionar $label" else selected, 
+            onValueChange = {}, 
+            readOnly = true, 
+            label = { Text(label) }, 
+            modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            shape = RoundedCornerShape(16.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
+            )
+        )
+        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { onExpandedChange(false) }) {
+            items.forEach { item ->
+                DropdownMenuItem(text = { Text(item) }, onClick = { onSelect(item) })
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ConfiguracionScreen(navController: NavHostController) {
+    val context = LocalContext.current
+    val db = remember { GastoDatabase.getDatabase(context) }
+    val scope = rememberCoroutineScope()
+    
+    val categorias by db.gastoDao().obtenerCategorias().collectAsState(initial = emptyList())
+    val personas by db.gastoDao().obtenerPersonas().collectAsState(initial = emptyList())
+
+    var nuevaCat by remember { mutableStateOf("") }
+    var nuevaPer by remember { mutableStateOf("") }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Personalizar", fontWeight = FontWeight.Bold) },
+                navigationIcon = {
+                    IconButton(onClick = { navController.popBackStack() }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
+                    }
+                }
+            )
+        }
+    ) { padding ->
+        Column(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp).verticalScroll(rememberScrollState())) {
+            SettingsSection(
+                title = "Categorías",
+                placeholder = "Ej: Comida, Ocio...",
+                value = nuevaCat,
+                onValueChange = { nuevaCat = it },
+                onAdd = {
+                    if (nuevaCat.isNotBlank()) {
+                        scope.launch { db.gastoDao().insertarCategoria(Categoria(nombre = nuevaCat)); nuevaCat = "" }
+                    }
+                },
+                items = categorias.map { it.nombre },
+                onDelete = { nombre -> 
+                    categorias.find { it.nombre == nombre }?.let { scope.launch { db.gastoDao().eliminarCategoria(it) } }
+                }
+            )
+
+            Spacer(Modifier.height(32.dp))
+
+            SettingsSection(
+                title = "Personas",
+                placeholder = "Ej: Yo, Juan...",
+                value = nuevaPer,
+                onValueChange = { nuevaPer = it },
+                onAdd = {
+                    if (nuevaPer.isNotBlank()) {
+                        scope.launch { db.gastoDao().insertarPersona(Persona(nombre = nuevaPer)); nuevaPer = "" }
+                    }
+                },
+                items = personas.map { it.nombre },
+                onDelete = { nombre ->
+                    personas.find { it.nombre == nombre }?.let { scope.launch { db.gastoDao().eliminarPersona(it) } }
+                }
+            )
+            
+            Spacer(Modifier.height(40.dp))
+        }
+    }
+}
+
+@Composable
+fun SettingsSection(title: String, placeholder: String, value: String, onValueChange: (String) -> Unit, onAdd: () -> Unit, items: List<String>, onDelete: (String) -> Unit) {
+    Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+    Spacer(Modifier.height(12.dp))
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        OutlinedTextField(
+            value = value, 
+            onValueChange = onValueChange, 
+            placeholder = { Text(placeholder) }, 
+            modifier = Modifier.weight(1f),
+            shape = RoundedCornerShape(12.dp)
+        )
+        Spacer(Modifier.width(12.dp))
+        FilledIconButton(
+            onClick = onAdd,
+            modifier = Modifier.size(56.dp),
+            shape = RoundedCornerShape(12.dp)
+        ) { Icon(Icons.Default.Add, "Agregar") }
+    }
+    Spacer(Modifier.height(8.dp))
+    items.forEach { item ->
+        ListItem(
+            headlineContent = { Text(item, fontWeight = FontWeight.Medium) },
+            trailingContent = {
+                IconButton(onClick = { onDelete(item) }) {
+                    Icon(Icons.Default.DeleteOutline, "Eliminar", tint = MaterialTheme.colorScheme.error.copy(alpha = 0.6f))
+                }
+            },
+            colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HistorialScreen(navController: NavHostController) {
     val context = LocalContext.current
     val db = remember { GastoDatabase.getDatabase(context) }
     val gastos by db.gastoDao().obtenerTodos().collectAsState(initial = emptyList())
     val scope = rememberCoroutineScope()
+    
+    var gastoParaEliminar by remember { mutableStateOf<Gasto?>(null) }
 
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Historial de Gastos", style = MaterialTheme.typography.headlineMedium)
-        Text("Toca el icono para eliminar", style = MaterialTheme.typography.bodySmall)
-        
-        Spacer(modifier = Modifier.height(16.dp))
-
-        LazyColumn(modifier = Modifier.weight(1f)) {
-            items(gastos) { gasto ->
-                Card(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp).fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("$${gasto.monto}", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                            Text("${gasto.categoria} - ${gasto.persona}", style = MaterialTheme.typography.bodyMedium)
-                            if (gasto.descripcion.isNotEmpty()) {
-                                Text(gasto.descripcion, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-                            }
-                            Text(gasto.fecha, style = MaterialTheme.typography.labelSmall)
-                        }
-                        IconButton(onClick = {
-                            scope.launch {
-                                db.gastoDao().eliminar(gasto)
-                            }
-                        }) {
-                            Icon(Icons.Default.Delete, contentDescription = "Eliminar", tint = MaterialTheme.colorScheme.error)
-                        }
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Historial", fontWeight = FontWeight.Bold) },
+                navigationIcon = {
+                    IconButton(onClick = { navController.popBackStack() }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
                     }
                 }
+            )
+        }
+    ) { padding ->
+        if (gastos.isEmpty()) {
+            EmptyState(message = "Aún no has registrado gastos", icon = Icons.AutoMirrored.Filled.List)
+        } else {
+            LazyColumn(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp)) {
+                item {
+                    val total = gastos.sumOf { it.monto }
+                    TotalCard(total = total)
+                }
+                items(gastos) { gasto ->
+                    ExpenseCard(gasto) { gastoParaEliminar = gasto }
+                }
+                item { Spacer(Modifier.height(32.dp)) }
             }
         }
+    }
 
-        Spacer(modifier = Modifier.height(16.dp))
+    if (gastoParaEliminar != null) {
+        AlertDialog(
+            onDismissRequest = { gastoParaEliminar = null },
+            title = { Text("¿Eliminar gasto?") },
+            text = { Text("Esta acción borrará el registro de $${gastoParaEliminar?.monto} permanentemente.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    scope.launch { db.gastoDao().eliminar(gastoParaEliminar!!); gastoParaEliminar = null }
+                }) { Text("Eliminar", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                TextButton(onClick = { gastoParaEliminar = null }) { Text("Cancelar") }
+            }
+        )
+    }
+}
 
-        Button(onClick = { navController.popBackStack() }, modifier = Modifier.fillMaxWidth()) {
-            Text("Volver")
+@Composable
+fun TotalCard(total: Double) {
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+        shape = RoundedCornerShape(24.dp)
+    ) {
+        Column(Modifier.padding(24.dp)) {
+            Text("Gasto Total Acumulado", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f))
+            Text("$${String.format("%.2f", total)}", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+        }
+    }
+}
+
+@Composable
+fun ExpenseCard(gasto: Gasto, onDelete: () -> Unit) {
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp).fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier.size(44.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.AccountBalanceWallet, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+            }
+            Spacer(Modifier.width(16.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = if(gasto.descripcion.isEmpty()) gasto.categoria else gasto.descripcion,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
+                Text(
+                    text = "${gasto.categoria} • ${gasto.persona}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                )
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text = "$${String.format("%.2f", gasto.monto)}",
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 17.sp,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                IconButton(onClick = onDelete, modifier = Modifier.size(24.dp)) {
+                    Icon(Icons.Default.DeleteOutline, contentDescription = "Borrar", tint = MaterialTheme.colorScheme.error.copy(alpha = 0.5f), modifier = Modifier.size(18.dp))
+                }
+            }
         }
     }
 }
@@ -264,6 +572,8 @@ fun GraficoScreen(navController: NavHostController) {
         gastosRaw.filter { it.fecha.startsWith(prefijo) }
     }
 
+    val totalMes = datosFiltrados.sumOf { it.monto }
+
     val datosAgrupados = remember(datosFiltrados, agruparPorCategoria) {
         if (agruparPorCategoria) {
             datosFiltrados.groupBy { it.categoria }.mapValues { it.value.sumOf { g -> g.monto } }
@@ -272,110 +582,161 @@ fun GraficoScreen(navController: NavHostController) {
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("Reporte de Gastos", style = MaterialTheme.typography.headlineMedium)
-        
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Row(modifier = Modifier.fillMaxWidth()) {
-            // Selector de Año
-            ExposedDropdownMenuBox(
-                expanded = expandedAnio, 
-                onExpandedChange = { expandedAnio = !expandedAnio },
-                modifier = Modifier.weight(1f)
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Reportes", fontWeight = FontWeight.Bold) },
+                navigationIcon = {
+                    IconButton(onClick = { navController.popBackStack() }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
+                    }
+                }
+            )
+        }
+    ) { padding ->
+        Column(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
+            // Header con Total del Mes
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
+                shape = RoundedCornerShape(20.dp)
             ) {
-                OutlinedTextField(
-                    value = anioSeleccionado,
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text("Año") },
-                    modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth()
-                )
-                ExposedDropdownMenu(expanded = expandedAnio, onDismissRequest = { expandedAnio = false }) {
-                    anios.forEach { anio ->
-                        DropdownMenuItem(text = { Text(anio) }, onClick = { anioSeleccionado = anio; expandedAnio = false })
+                Column(Modifier.padding(16.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Column {
+                            Text("Total del Mes", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                            Text("$${String.format("%.2f", totalMes)}", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                        }
+                        IconButton(onClick = { /* Exportar? */ }) { Icon(Icons.Default.Share, null, tint = MaterialTheme.colorScheme.primary) }
+                    }
+                    
+                    Spacer(Modifier.height(12.dp))
+                    
+                    Row(Modifier.fillMaxWidth()) {
+                        ExposedDropdownMenuBox(expanded = expandedAnio, onExpandedChange = { expandedAnio = it }, Modifier.weight(1f)) {
+                            OutlinedTextField(
+                                value = anioSeleccionado, onValueChange = {}, readOnly = true, label = { Text("Año") },
+                                modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedAnio) },
+                                shape = RoundedCornerShape(12.dp),
+                                textStyle = LocalTextStyle.current.copy(fontSize = 14.sp)
+                            )
+                            ExposedDropdownMenu(expanded = expandedAnio, onDismissRequest = { expandedAnio = false }) {
+                                anios.forEach { a -> DropdownMenuItem(text = { Text(a) }, onClick = { anioSeleccionado = a; expandedAnio = false }) }
+                            }
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        ExposedDropdownMenuBox(expanded = expandedMes, onExpandedChange = { expandedMes = it }, Modifier.weight(1.2f)) {
+                            OutlinedTextField(
+                                value = meses[mesSeleccionadoIdx], onValueChange = {}, readOnly = true, label = { Text("Mes") },
+                                modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedMes) },
+                                shape = RoundedCornerShape(12.dp),
+                                textStyle = LocalTextStyle.current.copy(fontSize = 14.sp)
+                            )
+                            ExposedDropdownMenu(expanded = expandedMes, onDismissRequest = { expandedMes = false }) {
+                                meses.forEachIndexed { i, m -> DropdownMenuItem(text = { Text(m) }, onClick = { mesSeleccionadoIdx = i; expandedMes = false }) }
+                            }
+                        }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
-            // Selector de Mes
-            ExposedDropdownMenuBox(
-                expanded = expandedMes, 
-                onExpandedChange = { expandedMes = !expandedMes },
-                modifier = Modifier.weight(1.5f)
+            // Selector Pro (Segment Control)
+            Surface(
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+                shape = RoundedCornerShape(26.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
             ) {
-                OutlinedTextField(
-                    value = meses[mesSeleccionadoIdx],
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text("Mes") },
-                    modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth()
-                )
-                ExposedDropdownMenu(expanded = expandedMes, onDismissRequest = { expandedMes = false }) {
-                    meses.forEachIndexed { index, mes ->
-                        DropdownMenuItem(text = { Text(mes) }, onClick = { mesSeleccionadoIdx = index; expandedMes = false })
-                    }
+                Row(modifier = Modifier.fillMaxSize().padding(4.dp)) {
+                    SegmentControlItem(text = "Personas", selected = !agruparPorCategoria, modifier = Modifier.weight(1f)) { agruparPorCategoria = false }
+                    SegmentControlItem(text = "Categorías", selected = agruparPorCategoria, modifier = Modifier.weight(1f)) { agruparPorCategoria = true }
                 }
             }
-        }
 
-        Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Persona")
-            Spacer(modifier = Modifier.width(12.dp))
-            Switch(checked = agruparPorCategoria, onCheckedChange = { agruparPorCategoria = it })
-            Spacer(modifier = Modifier.width(12.dp))
-            Text("Categoría")
-        }
+            Text(
+                text = "Mostrando: ${if(agruparPorCategoria) "Categorías" else "Personas"}",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+            )
+            
+            Spacer(modifier = Modifier.height(16.dp))
 
-        Spacer(modifier = Modifier.height(20.dp))
-
-        if (datosAgrupados.isNotEmpty()) {
-            PieChart(datosAgrupados)
-        } else {
-            Text("No hay gastos en ${meses[mesSeleccionadoIdx]} $anioSeleccionado", style = MaterialTheme.typography.bodyLarge)
-        }
-
-        Spacer(modifier = Modifier.height(20.dp))
-
-        Button(onClick = { navController.popBackStack() }) {
-            Text("Volver")
+            if (datosAgrupados.isNotEmpty()) {
+                BarChartPro(datosAgrupados)
+            } else {
+                EmptyState("No hay gastos en este período", icon = Icons.Default.Assessment)
+            }
         }
     }
 }
 
 @Composable
-fun PieChart(datos: Map<String, Double>) {
-    val total = datos.values.sum()
-    val colores = listOf(Color(0xFFE57373), Color(0xFF64B5F6), Color(0xFF81C784), Color(0xFFFFD54F), Color(0xFFBA68C8), Color(0xFF4DB6AC), Color(0xFFFF8A65))
-    
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Canvas(modifier = Modifier.size(200.dp)) {
-            var startAngle = 0f
-            datos.values.forEachIndexed { index, valor ->
-                val sweepAngle = (valor / total * 360).toFloat()
-                drawArc(
-                    color = colores[index % colores.size],
-                    startAngle = startAngle,
-                    sweepAngle = sweepAngle,
-                    useCenter = true,
-                    size = Size(size.width, size.height)
-                )
-                startAngle += sweepAngle
-            }
+fun SegmentControlItem(text: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    Surface(
+        modifier = modifier.fillMaxHeight().clip(RoundedCornerShape(22.dp)).clickable { onClick() },
+        color = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                text = text,
+                color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                fontSize = 15.sp
+            )
         }
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        LazyColumn(modifier = Modifier.heightIn(max = 300.dp)) {
-            items(datos.keys.toList()) { key ->
-                Row(modifier = Modifier.padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(modifier = Modifier.size(12.dp).background(colores[datos.keys.toList().indexOf(key) % colores.size]))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("$key: $${String.format("%.2f", datos[key])}")
+    }
+}
+
+@Composable
+fun EmptyState(message: String, icon: ImageVector) {
+    Column(
+        modifier = Modifier.fillMaxSize().padding(bottom = 64.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(100.dp), tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
+        Spacer(Modifier.height(24.dp))
+        Text(message, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f), textAlign = TextAlign.Center)
+    }
+}
+
+@Composable
+fun BarChartPro(datos: Map<String, Double>) {
+    val total = datos.values.sum()
+    val maxVal = datos.values.maxOrNull() ?: 1.0
+    val colores = listOf(Color(0xFF7C4DFF), Color(0xFFB388FF), Color(0xFF64B5F6), Color(0xFF81C784), Color(0xFFFFD54F), Color(0xFFBA68C8))
+    
+    LazyColumn(modifier = Modifier.fillMaxWidth()) {
+        val keys = datos.keys.toList().sortedByDescending { datos[it] }
+        items(keys) { key ->
+            val valor = datos[key] ?: 0.0
+            val porcentaje = if (total > 0) (valor / total) * 100 else 0.0
+            val fraction = (valor / maxVal).toFloat().coerceIn(0.01f, 1f)
+            val color = colores[keys.indexOf(key) % colores.size]
+            
+            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
+                    Text(text = key, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+                    Text("$${String.format("%.2f", valor)}", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(modifier = Modifier.weight(1f).height(14.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant)) {
+                        Box(modifier = Modifier.fillMaxWidth(fraction).fillMaxHeight().clip(CircleShape).background(color))
+                    }
+                    Spacer(Modifier.width(16.dp))
+                    Text(
+                        text = "${String.format("%.1f", porcentaje)}%",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                        modifier = Modifier.width(45.dp),
+                        textAlign = TextAlign.End
+                    )
                 }
             }
         }

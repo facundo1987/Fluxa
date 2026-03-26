@@ -5,7 +5,7 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
-@Database(entities = [Gasto::class], version = 1, exportSchema = false)
+@Database(entities = [Gasto::class, Categoria::class, Persona::class], version = 2, exportSchema = false)
 abstract class GastoDatabase : RoomDatabase() {
     abstract fun gastoDao(): GastoDao
 
@@ -19,7 +19,9 @@ abstract class GastoDatabase : RoomDatabase() {
                     context.applicationContext,
                     GastoDatabase::class.java,
                     "gasto_database"
-                ).build()
+                )
+                .fallbackToDestructiveMigration(true)
+                .build()
                 INSTANCE = instance
                 instance
             }
