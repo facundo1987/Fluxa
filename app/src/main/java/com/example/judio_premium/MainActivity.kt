@@ -5,8 +5,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.*
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -15,6 +13,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -26,12 +25,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -51,8 +52,19 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
+            val context = LocalContext.current
+            val onboardingManager = remember { OnboardingManager(context) }
+            val showOnboarding = remember { mutableStateOf(!onboardingManager.isOnboardingCompleted()) }
+
             Judio_premiumTheme {
-                AppNavigation()
+                if (showOnboarding.value) {
+                    OnboardingScreen(onFinished = {
+                        onboardingManager.setOnboardingCompleted()
+                        showOnboarding.value = false
+                    })
+                } else {
+                    AppNavigation()
+                }
             }
         }
     }
@@ -78,7 +90,28 @@ fun MainScreen(navController: NavHostController) {
     val categorias by db.gastoDao().obtenerCategorias().collectAsState(initial = emptyList())
     val personas by db.gastoDao().obtenerPersonas().collectAsState(initial = emptyList())
     
-    val botonesHabilitados = categorias.isNotEmpty() && personas.isNotEmpty()
+    var showValidationDialog by remember { mutableStateOf<ValidationState?>(null) }
+
+    if (showValidationDialog != null) {
+        AlertDialog(
+            onDismissRequest = { showValidationDialog = null },
+            title = { Text("Falta información") },
+            text = { Text(showValidationDialog!!.message) },
+            confirmButton = {
+                Button(onClick = {
+                    showValidationDialog = null
+                    navController.navigate("configuracion")
+                }) {
+                    Text(showValidationDialog!!.buttonText)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showValidationDialog = null }) {
+                    Text("Cancelar")
+                }
+            }
+        )
+    }
 
     Column(
         modifier = Modifier.fillMaxSize().padding(16.dp).systemBarsPadding(),
@@ -87,10 +120,11 @@ fun MainScreen(navController: NavHostController) {
     ) {
         Spacer(modifier = Modifier.weight(1f))
         
-        Image(
-            painter = painterResource(id = R.drawable.logo_app),
+        Icon(
+            painter = androidx.compose.ui.res.painterResource(id = R.drawable.logo_app),
             contentDescription = "Logo Fluxa",
-            modifier = Modifier.size(140.dp)
+            modifier = Modifier.size(120.dp),
+            tint = Color.Unspecified
         )
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -110,8 +144,14 @@ fun MainScreen(navController: NavHostController) {
         MainButton(
             text = "Ingresar Gasto",
             icon = Icons.Default.Add,
-            enabled = botonesHabilitados,
-            onClick = { navController.navigate("ingresar") }
+            onClick = {
+                val validation = validateBeforeAction(categorias, personas)
+                if (validation == null) {
+                    navController.navigate("ingresar")
+                } else {
+                    showValidationDialog = validation
+                }
+            }
         )
         
         Spacer(modifier = Modifier.height(16.dp))
@@ -119,8 +159,14 @@ fun MainScreen(navController: NavHostController) {
         MainButton(
             text = "Reportes",
             icon = Icons.Default.Assessment,
-            enabled = botonesHabilitados,
-            onClick = { navController.navigate("grafico") }
+            onClick = {
+                val validation = validateBeforeAction(categorias, personas)
+                if (validation == null) {
+                    navController.navigate("grafico")
+                } else {
+                    showValidationDialog = validation
+                }
+            }
         )
         
         Spacer(modifier = Modifier.height(16.dp))
@@ -128,8 +174,14 @@ fun MainScreen(navController: NavHostController) {
         MainButton(
             text = "Historial",
             icon = Icons.AutoMirrored.Filled.List,
-            enabled = botonesHabilitados,
-            onClick = { navController.navigate("historial") }
+            onClick = {
+                val validation = validateBeforeAction(categorias, personas)
+                if (validation == null) {
+                    navController.navigate("historial")
+                } else {
+                    showValidationDialog = validation
+                }
+            }
         )
         
         Spacer(modifier = Modifier.height(16.dp))
@@ -148,17 +200,6 @@ fun MainScreen(navController: NavHostController) {
             Text("Personalizar", fontWeight = FontWeight.Medium)
         }
         
-        if (!botonesHabilitados) {
-            Spacer(modifier = Modifier.height(20.dp))
-            Text(
-                "¡Bienvenido! Configura tus categorías y personas para empezar.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.primary,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 32.dp)
-            )
-        }
-
         Spacer(modifier = Modifier.weight(1f))
         
         Text(
@@ -170,12 +211,27 @@ fun MainScreen(navController: NavHostController) {
     }
 }
 
+data class ValidationState(val message: String, val buttonText: String)
+
+fun validateBeforeAction(categorias: List<Categoria>, personas: List<Persona>): ValidationState? {
+    return when {
+        categorias.isEmpty() -> ValidationState(
+            message = "Primero necesitás crear al menos una categoría",
+            buttonText = "Ir a crear"
+        )
+        personas.isEmpty() -> ValidationState(
+            message = "Primero necesitás agregar una persona",
+            buttonText = "Ir a agregar"
+        )
+        else -> null
+    }
+}
+
 @Composable
-fun MainButton(text: String, icon: ImageVector, enabled: Boolean, onClick: () -> Unit) {
+fun MainButton(text: String, icon: ImageVector, onClick: () -> Unit) {
     Button(
         onClick = onClick, 
         modifier = Modifier.fillMaxWidth().height(60.dp),
-        enabled = enabled,
         shape = RoundedCornerShape(18.dp),
         elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
     ) {
@@ -191,6 +247,8 @@ fun IngresarGastoScreen(navController: NavHostController) {
     val context = LocalContext.current
     val db = remember { GastoDatabase.getDatabase(context) }
     val scope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
+    val focusRequester = remember { FocusRequester() }
 
     val categorias by db.gastoDao().obtenerCategorias().collectAsState(initial = emptyList())
     val personas by db.gastoDao().obtenerPersonas().collectAsState(initial = emptyList())
@@ -205,6 +263,16 @@ fun IngresarGastoScreen(navController: NavHostController) {
 
     var personaSeleccionada by remember { mutableStateOf("-") }
     var expandedPer by remember { mutableStateOf(false) }
+
+    fun guardarGasto() {
+        val m = monto.toDoubleOrNull() ?: 0.0
+        if (m > 0 && categoriaSeleccionada != "-" && personaSeleccionada != "-") {
+            scope.launch {
+                db.gastoDao().insertar(Gasto(monto = m, categoria = categoriaSeleccionada, descripcion = descripcion, persona = personaSeleccionada, fecha = fechaDb))
+                navController.popBackStack()
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -234,7 +302,14 @@ fun IngresarGastoScreen(navController: NavHostController) {
                 onValueChange = { input -> if (input.all { it.isDigit() || it == '.' }) monto = input }, 
                 label = { Text("Monto ($)") }, 
                 modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Decimal,
+                    imeAction = ImeAction.Next
+                ),
+                keyboardActions = KeyboardActions(
+                    onNext = { focusRequester.requestFocus() }
+                ),
+                singleLine = true,
                 shape = RoundedCornerShape(16.dp),
                 prefix = { Text("$ ") },
                 textStyle = LocalTextStyle.current.copy(fontSize = 20.sp, fontWeight = FontWeight.Bold)
@@ -257,7 +332,17 @@ fun IngresarGastoScreen(navController: NavHostController) {
                 value = descripcion, 
                 onValueChange = { descripcion = it }, 
                 label = { Text("¿En qué gastaste? (opcional)") }, 
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
+                keyboardOptions = KeyboardOptions(
+                    imeAction = ImeAction.Done
+                ),
+                keyboardActions = KeyboardActions(
+                    onDone = { 
+                        focusManager.clearFocus()
+                        guardarGasto()
+                    }
+                ),
+                singleLine = true,
                 shape = RoundedCornerShape(16.dp)
             )
 
@@ -275,15 +360,7 @@ fun IngresarGastoScreen(navController: NavHostController) {
             Spacer(modifier = Modifier.height(40.dp))
 
             Button(
-                onClick = {
-                    val m = monto.toDoubleOrNull() ?: 0.0
-                    if (m > 0 && categoriaSeleccionada != "-" && personaSeleccionada != "-") {
-                        scope.launch {
-                            db.gastoDao().insertar(Gasto(monto = m, categoria = categoriaSeleccionada, descripcion = descripcion, persona = personaSeleccionada, fecha = fechaDb))
-                            navController.popBackStack()
-                        }
-                    }
-                },
+                onClick = { guardarGasto() },
                 modifier = Modifier.fillMaxWidth().height(56.dp),
                 enabled = monto.isNotEmpty() && categoriaSeleccionada != "-" && personaSeleccionada != "-",
                 shape = RoundedCornerShape(16.dp)
@@ -343,6 +420,7 @@ fun ConfiguracionScreen(navController: NavHostController) {
     val context = LocalContext.current
     val db = remember { GastoDatabase.getDatabase(context) }
     val scope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
     
     val categorias by db.gastoDao().obtenerCategorias().collectAsState(initial = emptyList())
     val personas by db.gastoDao().obtenerPersonas().collectAsState(initial = emptyList())
@@ -363,75 +441,137 @@ fun ConfiguracionScreen(navController: NavHostController) {
         }
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp).verticalScroll(rememberScrollState())) {
-            SettingsSection(
-                title = "Categorías",
-                placeholder = "Ej: Comida, Ocio...",
-                value = nuevaCat,
-                onValueChange = { nuevaCat = it },
-                onAdd = {
+            Text("Categorías", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.height(12.dp))
+            
+            if (categorias.isEmpty()) {
+                EmptyStateSection(
+                    message = "No tenés categorías todavía",
+                    buttonText = "Crear categoría",
+                    icon = Icons.Default.Category
+                ) { }
+            }
+            
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = nuevaCat, 
+                    onValueChange = { nuevaCat = it }, 
+                    placeholder = { Text("Ej: Comida, Ocio...") },
+                    modifier = Modifier.weight(1f), 
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = {
+                        if (nuevaCat.isNotBlank()) {
+                            scope.launch { db.gastoDao().insertarCategoria(Categoria(nombre = nuevaCat)); nuevaCat = "" }
+                            focusManager.clearFocus()
+                        }
+                    })
+                )
+                Spacer(Modifier.width(8.dp))
+                IconButton(onClick = {
                     if (nuevaCat.isNotBlank()) {
                         scope.launch { db.gastoDao().insertarCategoria(Categoria(nombre = nuevaCat)); nuevaCat = "" }
+                        focusManager.clearFocus()
                     }
-                },
-                items = categorias.map { it.nombre },
-                onDelete = { nombre -> 
-                    categorias.find { it.nombre == nombre }?.let { scope.launch { db.gastoDao().eliminarCategoria(it) } }
+                }, colors = IconButtonDefaults.iconButtonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = Color.White)) {
+                    Icon(Icons.Default.Add, null)
                 }
-            )
+            }
+            
+            Spacer(modifier = Modifier.height(12.dp))
+            categorias.forEach { item ->
+                ListItem(
+                    headlineContent = { Text(item.nombre) },
+                    trailingContent = {
+                        IconButton(onClick = { scope.launch { db.gastoDao().eliminarCategoria(item) } }) {
+                            Icon(Icons.Default.DeleteOutline, "Eliminar", tint = MaterialTheme.colorScheme.error.copy(alpha = 0.6f))
+                        }
+                    },
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+                )
+            }
 
-            Spacer(Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(32.dp))
 
-            SettingsSection(
-                title = "Personas",
-                placeholder = "Ej: Yo, Juan...",
-                value = nuevaPer,
-                onValueChange = { nuevaPer = it },
-                onAdd = {
+            Text("Personas", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.height(12.dp))
+
+            if (personas.isEmpty()) {
+                EmptyStateSection(
+                    message = "No agregaste personas aún",
+                    buttonText = "Agregar persona",
+                    icon = Icons.Default.PersonAdd
+                ) { }
+            }
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = nuevaPer, 
+                    onValueChange = { nuevaPer = it }, 
+                    placeholder = { Text("Ej: Yo, Juan...") },
+                    modifier = Modifier.weight(1f), 
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = {
+                        if (nuevaPer.isNotBlank()) {
+                            scope.launch { db.gastoDao().insertarPersona(Persona(nombre = nuevaPer)); nuevaPer = "" }
+                            focusManager.clearFocus()
+                        }
+                    })
+                )
+                Spacer(Modifier.width(8.dp))
+                IconButton(onClick = {
                     if (nuevaPer.isNotBlank()) {
                         scope.launch { db.gastoDao().insertarPersona(Persona(nombre = nuevaPer)); nuevaPer = "" }
+                        focusManager.clearFocus()
                     }
-                },
-                items = personas.map { it.nombre },
-                onDelete = { nombre ->
-                    personas.find { it.nombre == nombre }?.let { scope.launch { db.gastoDao().eliminarPersona(it) } }
+                }, colors = IconButtonDefaults.iconButtonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = Color.White)) {
+                    Icon(Icons.Default.Add, null)
                 }
-            )
+            }
             
-            Spacer(Modifier.height(40.dp))
+            Spacer(modifier = Modifier.height(12.dp))
+            personas.forEach { item ->
+                ListItem(
+                    headlineContent = { Text(item.nombre) },
+                    trailingContent = {
+                        IconButton(onClick = { scope.launch { db.gastoDao().eliminarPersona(item) } }) {
+                            Icon(Icons.Default.DeleteOutline, "Eliminar", tint = MaterialTheme.colorScheme.error.copy(alpha = 0.6f))
+                        }
+                    },
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+                )
+            }
         }
     }
 }
 
 @Composable
-fun SettingsSection(title: String, placeholder: String, value: String, onValueChange: (String) -> Unit, onAdd: () -> Unit, items: List<String>, onDelete: (String) -> Unit) {
-    Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-    Spacer(Modifier.height(12.dp))
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        OutlinedTextField(
-            value = value, 
-            onValueChange = onValueChange, 
-            placeholder = { Text(placeholder) }, 
-            modifier = Modifier.weight(1f),
-            shape = RoundedCornerShape(12.dp)
+fun EmptyStateSection(message: String, buttonText: String, icon: ImageVector, onAction: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 24.dp, horizontal = 16.dp)
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f), RoundedCornerShape(24.dp))
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            modifier = Modifier.size(48.dp),
+            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
         )
-        Spacer(Modifier.width(12.dp))
-        FilledIconButton(
-            onClick = onAdd,
-            modifier = Modifier.size(56.dp),
-            shape = RoundedCornerShape(12.dp)
-        ) { Icon(Icons.Default.Add, "Agregar") }
-    }
-    Spacer(Modifier.height(8.dp))
-    items.forEach { item ->
-        ListItem(
-            headlineContent = { Text(item, fontWeight = FontWeight.Medium) },
-            trailingContent = {
-                IconButton(onClick = { onDelete(item) }) {
-                    Icon(Icons.Default.DeleteOutline, "Eliminar", tint = MaterialTheme.colorScheme.error.copy(alpha = 0.6f))
-                }
-            },
-            colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+        Spacer(Modifier.height(16.dp))
+        Text(
+            text = message,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+            textAlign = TextAlign.Center
         )
+        // El botón en este contexto de configuración es informativo o para guiar al TextField de arriba
     }
 }
 

@@ -160,7 +160,8 @@ fun OnboardingBottomSection(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 32.dp, vertical = 40.dp),
+            .navigationBarsPadding() // Subir botones para que no queden pegados al menú de Android
+            .padding(horizontal = 32.dp, vertical = 24.dp), // Reducir vertical para balancear
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -188,14 +189,15 @@ fun OnboardingBottomSection(
             shape = RoundedCornerShape(16.dp),
             modifier = Modifier
                 .height(56.dp)
-                .width(if (isLastPage) 160.dp else 120.dp),
+                .width(if (isLastPage) 160.dp else 135.dp), // Ancho aumentado para evitar que "Siguiente" se corte
             colors = ButtonDefaults.buttonColors(
                 containerColor = MaterialTheme.colorScheme.primary
             )
         ) {
             Text(
                 text = if (isLastPage) "Comenzar" else "Siguiente",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                maxLines = 1 // Asegurar una sola línea
             )
         }
     }
